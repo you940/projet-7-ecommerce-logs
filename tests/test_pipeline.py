@@ -64,10 +64,11 @@ def test_kpi_queries_on_known_data(spark):
            for r in spark.sql(read_sql("engagement")).collect()}
     assert eng["2019-10-01"] == (2, 2)
 
-    # entonnoir : 3 sessions avec vue, 1 avec panier, 1 avec achat
+    # entonnoir : 3 sessions avec vue, 1 avec vue+panier, 1 avec vue+panier+achat
     f = spark.sql(read_sql("purchase_funnel")).collect()[0]
-    assert (f["sessions_view"], f["sessions_cart"], f["sessions_purchase"]) == (3, 1, 1)
-    assert float(f["pct_view_to_purchase"]) == 33.33
+    assert (f["sessions_view"], f["sessions_view_cart"], f["sessions_view_cart_purchase"]) == (3, 1, 1)
+    assert f["sessions_purchase_total"] == 1 and f["purchase_without_cart"] == 0
+    assert float(f["pct_view_cart_to_purchase"]) == 33.33
 
     # popularite : le produit 1 a 1 vue (doublon retire), le produit 2 a 2 vues
     pop = spark.sql(read_sql("popularity")).collect()
