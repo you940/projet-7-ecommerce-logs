@@ -1,28 +1,19 @@
--- Nettoyage et enrichissement en Spark SQL (vue source : raw_events)
--- Regles :
---  R1 : lignes sans date, type, produit, utilisateur ou session supprimees
---  R2 : seuls les types view / cart / remove_from_cart / purchase sont conserves
---  R3 : prix negatifs supprimes (prix absent tolere)
---  R4 : brand / category_code manquants remplaces par 'unknown'
---  R5 : colonnes derivees : event_date, event_hour, category_main
---  (R6 : suppression des doublons exacts, faite dans transform.py via dropDuplicates)
+-- Nettoyage en Spark SQL (vue source : raw_events)
+-- R1 : lignes avec user_id, product_id ou session_id manquant supprimées
+-- R2 : timestamp invalide supprimé
+-- R3 : seuls les 5 types d'action valides sont conservés
+-- R4 : colonne dt (date de partition) dérivée du timestamp
+-- (R5 : doublons exacts supprimés dans transform.py via dropDuplicates)
 SELECT
-    to_timestamp(regexp_replace(event_time, ' UTC$', '')) AS event_time,
-    event_type,
-    product_id,
-    category_id,
-    COALESCE(category_code, 'unknown') AS category_code,
-    COALESCE(brand, 'unknown')         AS brand,
-    price,
     user_id,
-    user_session,
-    to_date(to_timestamp(regexp_replace(event_time, ' UTC$', '')))     AS event_date,
-    hour(to_timestamp(regexp_replace(event_time, ' UTC$', '')))        AS event_hour,
-    split(COALESCE(category_code, 'unknown'), '[.]')[0]                AS category_main
+    product_id,
+    session_id,
+    action_type,
+    to_timestamp(`timestamp`)                            AS event_time,
+    date_format(to_timestamp(`timestamp`), 'yyyy-MM-dd') AS dt
 FROM raw_events
-WHERE event_time   IS NOT NULL
-  AND event_type   IN ('view', 'cart', 'remove_from_cart', 'purchase')
-  AND product_id   IS NOT NULL
-  AND user_id      IS NOT NULL
-  AND user_session IS NOT NULL
-  AND (price IS NULL OR price >= 0)
+WHERE user_id     IS NOT NULL
+  AND product_id  IS NOT NULL
+  AND session_id  IS NOT NULL
+  AND to_timestamp(`timestamp`) IS NOT NULL
+  AND action_type IN ('page_view', 'click', 'add_to_cart', 'remove_from_cart', 'purchase')

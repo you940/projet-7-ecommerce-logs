@@ -1,10 +1,10 @@
-"""Etape 2 - Validation, nettoyage et transformations (SQL + DataFrame)."""
+"""Étape 2 - Validation, nettoyage et rapport qualité."""
 import os
 
 from pyspark.sql import functions as F
 
 SQL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "sql")
-VALID_EVENTS = ["view", "cart", "remove_from_cart", "purchase"]
+VALID_ACTIONS = ["page_view", "click", "add_to_cart", "remove_from_cart", "purchase"]
 
 
 def read_sql(name):
@@ -13,46 +13,37 @@ def read_sql(name):
 
 
 def clean(spark, raw_df):
-    """Applique les regles de sql/clean.sql puis supprime les doublons exacts."""
+    """Applique les règles de sql/clean.sql puis supprime les doublons exacts."""
     raw_df.createOrReplaceTempView("raw_events")
     cleaned = spark.sql(read_sql("clean"))
     return cleaned.dropDuplicates()
 
 
 def quality_report(raw_df, clean_df):
-    """Rapport qualite : lignes avant/apres ET detail des suppressions par regle.
-
-    Les compteurs par regle peuvent se chevaucher (une ligne peut enfreindre
-    plusieurs regles) ; 'lignes_rejetees_par_regles' compte chaque ligne une seule fois.
-    """
-    missing = (F.col("event_time").isNull() | F.col("product_id").isNull()
-               | F.col("user_id").isNull() | F.col("user_session").isNull())
-    bad_type = F.col("event_type").isNull() | (~F.col("event_type").isin(VALID_EVENTS))
-    neg_price = F.col("price") < 0
-
-    def count_if(cond):
-        return F.sum(F.when(cond, 1).otherwise(0))
+    """Compte les lignes avant / après nettoyage et détaille les rejets."""
+    missing = (F.col("user_id").isNull() | F.col("product_id").isNull()
+               | F.col("session_id").isNull())
+    bad_ts = F.to_timestamp(F.col("timestamp")).isNull()
+    bad_type = F.col("action_type").isNull() | ~F.col("action_type").isin(VALID_ACTIONS)
+    rejected = missing | bad_ts | bad_type
 
     row = raw_df.agg(
         F.count(F.lit(1)).alias("total"),
-        count_if(missing).alias("missing"),
-        count_if(bad_type).alias("bad_type"),
-        count_if(neg_price).alias("neg_price"),
-        count_if(missing | bad_type | neg_price).alias("rejected"),
-    ).collect()[0]
+        F.sum(F.when(missing, 1).otherwise(0)).alias("missing"),
+        F.sum(F.when(bad_ts, 1).otherwise(0)).alias("bad_ts"),
+        F.sum(F.when(bad_type, 1).otherwise(0)).alias("bad_type"),
+        F.sum(F.when(rejected, 1).otherwise(0)).alias("rejected"),
+    ).first()
 
-    total = int(row["total"] or 0)
-    rejected = int(row["rejected"] or 0)
+    n_raw = int(row["total"])
+    n_rejected = int(row["rejected"])
     n_clean = clean_df.count()
     return {
-        "lignes_brutes": total,
+        "lignes_brutes": n_raw,
+        "valeurs_manquantes": int(row["missing"]),
+        "timestamps_invalides": int(row["bad_ts"]),
+        "types_action_invalides": int(row["bad_type"]),
+        "lignes_rejetees": n_rejected,
+        "doublons_supprimes": n_raw - n_rejected - n_clean,
         "lignes_propres": n_clean,
-        "lignes_supprimees": total - n_clean,
-        "detail_suppression": {
-            "champ_obligatoire_manquant": int(row["missing"] or 0),
-            "type_evenement_invalide": int(row["bad_type"] or 0),
-            "prix_negatif": int(row["neg_price"] or 0),
-            "lignes_rejetees_par_regles": rejected,
-            "doublons_exacts": total - rejected - n_clean,
-        },
     }

@@ -1,22 +1,10 @@
-"""Etape 1 - Chargement des logs bruts (CSV) avec un schema explicite."""
-from pyspark.sql.types import (DoubleType, LongType, StringType, StructField, StructType)
+"""Étape 1 - Chargement des logs bruts (JSON) avec un schéma explicite."""
+from pyspark.sql.types import StringType, StructField, StructType
 
-SCHEMA = StructType([
-    StructField("event_time", StringType()),    # converti en timestamp dans la transformation
-    StructField("event_type", StringType()),
-    StructField("product_id", LongType()),
-    StructField("category_id", LongType()),
-    StructField("category_code", StringType()),
-    StructField("brand", StringType()),
-    StructField("price", DoubleType()),
-    StructField("user_id", LongType()),
-    StructField("user_session", StringType()),
-])
+COLUMNS = ["user_id", "product_id", "timestamp", "action_type", "session_id"]
+SCHEMA = StructType([StructField(c, StringType()) for c in COLUMNS])
 
 
 def load_raw(spark, path):
-    """Lit le CSV avec le schema impose (pas d'inferSchema : plus rapide et plus sur)."""
-    return (spark.read.option("header", True)
-            .option("nullValue", "")
-            .schema(SCHEMA)
-            .csv(path))
+    """Lit le JSON (1 objet par ligne) avec le schéma imposé."""
+    return spark.read.schema(SCHEMA).json(path)

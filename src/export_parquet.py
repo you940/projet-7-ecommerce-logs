@@ -1,11 +1,14 @@
-"""Etape 3 - Ecriture et relecture du format Parquet."""
+"""Étape 3 - Écriture et relecture du Parquet (Snappy, partitionné par dt)."""
 
 
-def write_parquet(df, path, partition_col="event_date"):
-    """Ecrit en Parquet, partitionne par date (accelere les filtres par jour)."""
-    df.write.mode("overwrite").partitionBy(partition_col).parquet(path)
+def write_parquet(df, path, partition_col="dt"):
+    """Parquet compressé Snappy, partitionné physiquement par date (dt=YYYY-MM-DD)."""
+    (df.write.mode("overwrite")
+       .option("compression", "snappy")
+       .partitionBy(partition_col)
+       .parquet(path))
 
 
 def read_parquet(spark, path):
-    """Relit le Parquet : sert de preuve que l'ecriture est valide."""
+    """Relit le Parquet : preuve que l'écriture est valide."""
     return spark.read.parquet(path)
