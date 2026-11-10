@@ -1,7 +1,10 @@
 """Etape 2 - Validation, nettoyage et transformations (SQL + DataFrame)."""
 import os
 
+from pyspark.sql import functions as F
+
 SQL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "sql")
+VALID_EVENTS = ["view", "cart", "remove_from_cart", "purchase"]
 
 
 def read_sql(name):
@@ -17,6 +20,39 @@ def clean(spark, raw_df):
 
 
 def quality_report(raw_df, clean_df):
-    """Compte les lignes avant / apres nettoyage (a documenter dans le rapport)."""
-    n_raw, n_clean = raw_df.count(), clean_df.count()
-    return {"lignes_brutes": n_raw, "lignes_propres": n_clean, "lignes_supprimees": n_raw - n_clean}
+    """Rapport qualite : lignes avant/apres ET detail des suppressions par regle.
+
+    Les compteurs par regle peuvent se chevaucher (une ligne peut enfreindre
+    plusieurs regles) ; 'lignes_rejetees_par_regles' compte chaque ligne une seule fois.
+    """
+    missing = (F.col("event_time").isNull() | F.col("product_id").isNull()
+               | F.col("user_id").isNull() | F.col("user_session").isNull())
+    bad_type = F.col("event_type").isNull() | (~F.col("event_type").isin(VALID_EVENTS))
+    neg_price = F.col("price") < 0
+
+    def count_if(cond):
+        return F.sum(F.when(cond, 1).otherwise(0))
+
+    row = raw_df.agg(
+        F.count(F.lit(1)).alias("total"),
+        count_if(missing).alias("missing"),
+        count_if(bad_type).alias("bad_type"),
+        count_if(neg_price).alias("neg_price"),
+        count_if(missing | bad_type | neg_price).alias("rejected"),
+    ).collect()[0]
+
+    total = int(row["total"] or 0)
+    rejected = int(row["rejected"] or 0)
+    n_clean = clean_df.count()
+    return {
+        "lignes_brutes": total,
+        "lignes_propres": n_clean,
+        "lignes_supprimees": total - n_clean,
+        "detail_suppression": {
+            "champ_obligatoire_manquant": int(row["missing"] or 0),
+            "type_evenement_invalide": int(row["bad_type"] or 0),
+            "prix_negatif": int(row["neg_price"] or 0),
+            "lignes_rejetees_par_regles": rejected,
+            "doublons_exacts": total - rejected - n_clean,
+        },
+    }

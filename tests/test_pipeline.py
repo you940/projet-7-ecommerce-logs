@@ -1,6 +1,6 @@
 """Tests du pipeline : nettoyage, Parquet (aller-retour) et KPI sur un jeu minimal connu."""
 from ingest import SCHEMA
-from transform import clean, read_sql
+from transform import clean, quality_report, read_sql
 from export_parquet import write_parquet, read_parquet
 
 COLS = [f.name for f in SCHEMA.fields]
@@ -73,3 +73,15 @@ def test_kpi_queries_on_known_data(spark):
     # popularite : le produit 1 a 1 vue (doublon retire), le produit 2 a 2 vues
     pop = spark.sql(read_sql("popularity")).collect()
     assert pop[0]["product_id"] == 2 and pop[0]["nb_views"] == 2
+
+
+def test_quality_report_breakdown(spark):
+    raw = spark.createDataFrame(ROWS, COLS)
+    rep = quality_report(raw, clean(spark, raw))
+    d = rep["detail_suppression"]
+    assert rep["lignes_brutes"] == 9 and rep["lignes_propres"] == 5
+    assert d["type_evenement_invalide"] == 1
+    assert d["prix_negatif"] == 1
+    assert d["champ_obligatoire_manquant"] == 1
+    assert d["lignes_rejetees_par_regles"] == 3
+    assert d["doublons_exacts"] == 1
