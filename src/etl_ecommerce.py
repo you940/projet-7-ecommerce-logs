@@ -41,6 +41,25 @@ def main(input_path, parquet_path, reports_path):
     # 4. Requêtes Spark SQL sur le Parquet
     events.createOrReplaceTempView("events")
     os.makedirs(reports_path, exist_ok=True)
+
+    # 4a. Window Functions : enrichissement des événements
+    enriched = spark.sql(read_sql("events_enriched"))
+    enriched.createOrReplaceTempView("events_enriched")
+    print("\n=== EXEMPLE : une session avec rang et durée inter-actions ===")
+    sample_session = enriched.select("session_id").first()["session_id"]
+    (enriched.filter(f"session_id = '{sample_session}'")
+             .orderBy("event_rank").show(20, truncate=False))
+
+    # 4b. Sessions reconstituées
+    sessions = spark.sql(read_sql("session_metrics")).cache()
+    sessions.createOrReplaceTempView("sessions")
+    sessions.write.mode("overwrite").option("compression", "snappy").parquet(
+        os.path.join(os.path.dirname(parquet_path), "sessions"))
+    print("\n=== SESSIONS RECONSTITUEES (extrait) ===")
+    sessions.orderBy("session_id").show(10, truncate=False)
+    print("Nombre de sessions :", sessions.count())
+
+    # 4c. Autres requêtes (ajoutées aux étapes suivantes)
     for q in QUERIES:
         res = spark.sql(read_sql(q))
         print(f"\n=== {q.upper()} ===")
