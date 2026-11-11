@@ -10,8 +10,7 @@ from export_parquet import read_parquet, write_parquet
 from ingest import load_raw
 from transform import clean, quality_report, read_sql
 
-QUERIES = ["sessions_summary", "cart_abandonment", "clicks_per_product"]   # les requêtes Spark SQL seront ajoutées aux étapes suivantes
-
+QUERIES = ["sessions_summary", "cart_abandonment", "clicks_per_product"]
 
 def main(input_path, parquet_path, reports_path):
     spark = (SparkSession.builder.appName("etl_ecommerce")
@@ -59,7 +58,7 @@ def main(input_path, parquet_path, reports_path):
     sessions.orderBy("session_id").show(10, truncate=False)
     print("Nombre de sessions :", sessions.count())
 
-    # 4c. Autres requêtes (ajoutées aux étapes suivantes)
+    # 4c. Requêtes KPI : statistiques de sessions, abandon de panier, clics par produit
     for q in QUERIES:
         res = spark.sql(read_sql(q))
         print(f"\n=== {q.upper()} ===")

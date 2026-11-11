@@ -5,12 +5,12 @@ import time
 from pyspark.sql import SparkSession
 
 PATH = "/opt/outputs/parquet/events"
-DAY = "2026-11-05"
 
 spark = SparkSession.builder.appName("partition_pruning_demo").getOrCreate()
 spark.sparkContext.setLogLevel("WARN")
 
 partitions = sorted(d for d in os.listdir(PATH) if d.startswith("dt="))
+DAY = partitions[len(partitions) // 2].split("=")[1]   # un jour du milieu, toujours existant
 print(f"\nNombre de partitions physiques : {len(partitions)}")
 print(f"Première : {partitions[0]}  |  Dernière : {partitions[-1]}")
 
