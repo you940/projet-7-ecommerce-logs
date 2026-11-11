@@ -10,7 +10,7 @@ from export_parquet import read_parquet, write_parquet
 from ingest import load_raw
 from transform import clean, quality_report, read_sql
 
-QUERIES = []   # les requêtes Spark SQL seront ajoutées aux étapes suivantes
+QUERIES = ["sessions_summary", "cart_abandonment", "clicks_per_product"]   # les requêtes Spark SQL seront ajoutées aux étapes suivantes
 
 
 def main(input_path, parquet_path, reports_path):
